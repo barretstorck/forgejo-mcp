@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"codeberg.org/goern/forgejo-mcp/v2/operation/params"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/forgejo"
@@ -21,7 +22,8 @@ const (
 	DeleteFileToolName    = "delete_file"
 	ListDirectoryToolName      = "list_directory"
 	GetDirectoryContentToolName  = "get_directory_content"
-	GetRepositoryTreeToolName    = "get_repository_tree"
+	GetRepositoryTreeToolName       = "get_repository_tree"
+	SearchRepositoryContentsToolName = "search_repository_contents"
 )
 
 var (
@@ -95,6 +97,15 @@ var (
 		mcp.WithString("repo", mcp.Required(), mcp.Description(params.Repo)),
 		mcp.WithString("ref", mcp.Description(params.Ref)),
 		mcp.WithBoolean("recursive", mcp.Description("Recurse into subdirectories. Default: true.")),
+	)
+
+	SearchRepositoryContentsTool = mcp.NewTool(
+		SearchRepositoryContentsToolName,
+		mcp.WithDescription("Search for files by name within a repository. Performs case-insensitive matching against file paths in the repository tree."),
+		mcp.WithString("owner", mcp.Required(), mcp.Description(params.Owner)),
+		mcp.WithString("repo", mcp.Required(), mcp.Description(params.Repo)),
+		mcp.WithString("query", mcp.Required(), mcp.Description("Search query to match against file paths (case-insensitive)")),
+		mcp.WithString("ref", mcp.Description(params.Ref)),
 	)
 )
 
@@ -299,4 +310,46 @@ func GetRepositoryTreeFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.Cal
 		return to.ErrorResult(fmt.Errorf("get repository tree err: %v", err))
 	}
 	return to.TextResult(tree)
+}
+
+func SearchRepositoryContentsFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log.Debugf("Called SearchRepositoryContentsFn")
+	owner, ok := req.GetArguments()["owner"].(string)
+	if !ok {
+		return to.ErrorResult(fmt.Errorf("owner is required"))
+	}
+	repo, ok := req.GetArguments()["repo"].(string)
+	if !ok {
+		return to.ErrorResult(fmt.Errorf("repo is required"))
+	}
+	query, ok := req.GetArguments()["query"].(string)
+	if !ok {
+		return to.ErrorResult(fmt.Errorf("query is required"))
+	}
+	ref, _ := req.GetArguments()["ref"].(string)
+
+	ref, err := resolveRef(owner, repo, ref)
+	if err != nil {
+		return to.ErrorResult(err)
+	}
+
+	opts := forgejo_sdk.GetTreesOptions{Recursive: true}
+	tree, _, err := forgejo.Client().GetTrees(owner, repo, ref, opts)
+	if err != nil {
+		return to.ErrorResult(fmt.Errorf("search repository contents err: %v", err))
+	}
+
+	queryLower := strings.ToLower(query)
+	type match struct {
+		Path string `json:"path"`
+		Type string `json:"type"`
+		Size int64  `json:"size"`
+	}
+	var matches []match
+	for _, entry := range tree.Entries {
+		if strings.Contains(strings.ToLower(entry.Path), queryLower) {
+			matches = append(matches, match{Path: entry.Path, Type: entry.Type, Size: entry.Size})
+		}
+	}
+	return to.TextResult(matches)
 }

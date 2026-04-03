@@ -10,6 +10,7 @@ import (
 
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/forgejo"
 	forgejo_sdk "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func setupDirectoryMockServer(t *testing.T, response interface{}, statusCode int) *httptest.Server {
@@ -199,5 +200,89 @@ func TestGetRepositoryTreeFn_MissingOwner(t *testing.T) {
 	_, err := GetRepositoryTreeFn(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error for missing owner, got nil")
+	}
+}
+
+func TestSearchRepositoryContentsFn_MatchesFound(t *testing.T) {
+	repoResponse := map[string]interface{}{
+		"default_branch": "main",
+		"name":           "testrepo",
+		"owner":          map[string]interface{}{"login": "testowner"},
+	}
+	treeResponse := map[string]interface{}{
+		"sha": "abc123",
+		"tree": []map[string]interface{}{
+			{"path": "README.md", "type": "blob", "size": 100},
+			{"path": "src/main.go", "type": "blob", "size": 2048},
+			{"path": "src/utils/helper.go", "type": "blob", "size": 512},
+			{"path": "docs/readme.txt", "type": "blob", "size": 64},
+		},
+		"truncated": false,
+	}
+	srv := setupTreeMockServer(t, repoResponse, treeResponse)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner": "testowner",
+		"repo":  "testrepo",
+		"query": "readme",
+	})
+	result, err := SearchRepositoryContentsFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SearchRepositoryContentsFn returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("SearchRepositoryContentsFn returned tool error")
+	}
+	// Verify the result contains both README.md and docs/readme.txt (case-insensitive)
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "README.md") || !strings.Contains(text, "docs/readme.txt") {
+		t.Fatalf("expected both README.md and docs/readme.txt in results, got: %s", text)
+	}
+	// Should not contain main.go or helper.go
+	if strings.Contains(text, "main.go") {
+		t.Fatalf("did not expect main.go in results, got: %s", text)
+	}
+}
+
+func TestSearchRepositoryContentsFn_NoMatches(t *testing.T) {
+	treeResponse := map[string]interface{}{
+		"sha": "abc123",
+		"tree": []map[string]interface{}{
+			{"path": "src/main.go", "type": "blob", "size": 2048},
+		},
+		"truncated": false,
+	}
+	srv := setupTreeMockServer(t, nil, treeResponse)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner": "testowner",
+		"repo":  "testrepo",
+		"query": "nonexistent",
+		"ref":   "main",
+	})
+	result, err := SearchRepositoryContentsFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SearchRepositoryContentsFn returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("SearchRepositoryContentsFn returned tool error")
+	}
+	// Result should have null matches (empty list)
+	text := result.Content[0].(mcp.TextContent).Text
+	if strings.Contains(text, "main.go") {
+		t.Fatalf("did not expect any matches, got: %s", text)
+	}
+}
+
+func TestSearchRepositoryContentsFn_MissingQuery(t *testing.T) {
+	req := newCallToolRequest(map[string]interface{}{
+		"owner": "testowner",
+		"repo":  "testrepo",
+	})
+	_, err := SearchRepositoryContentsFn(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for missing query, got nil")
 	}
 }
