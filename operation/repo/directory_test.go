@@ -69,6 +69,37 @@ func TestListDirectoryFn_SubDirectory(t *testing.T) {
 	}
 }
 
+func TestGetDirectoryContentFn_RootDirectory(t *testing.T) {
+	mockResponse := []map[string]interface{}{
+		{"name": "README.md", "type": "file", "path": "README.md", "size": 100, "sha": "abc123", "download_url": "https://example.com/README.md", "html_url": "https://example.com/repo/README.md"},
+		{"name": "src", "type": "dir", "path": "src", "size": 0, "sha": "def456"},
+	}
+	srv := setupDirectoryMockServer(t, mockResponse, http.StatusOK)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner": "testowner",
+		"repo":  "testrepo",
+	})
+	result, err := GetDirectoryContentFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetDirectoryContentFn returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("GetDirectoryContentFn returned tool error")
+	}
+}
+
+func TestGetDirectoryContentFn_MissingOwner(t *testing.T) {
+	req := newCallToolRequest(map[string]interface{}{
+		"repo": "testrepo",
+	})
+	_, err := GetDirectoryContentFn(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for missing owner, got nil")
+	}
+}
+
 func TestListDirectoryFn_MissingOwner(t *testing.T) {
 	req := newCallToolRequest(map[string]interface{}{
 		"repo": "testrepo",

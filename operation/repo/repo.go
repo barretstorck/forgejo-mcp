@@ -69,6 +69,7 @@ func RegisterTool(s *server.MCPServer) {
 
 	// Directory
 	s.AddTool(ListDirectoryTool, ListDirectoryFn)
+	s.AddTool(GetDirectoryContentTool, GetDirectoryContentFn)
 
 	// Branch
 	s.AddTool(CreateBranchTool, CreateBranchFn)
