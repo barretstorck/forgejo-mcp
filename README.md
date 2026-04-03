@@ -40,6 +40,28 @@ yay -S forgejo-mcp      # builds from source
 yay -S forgejo-mcp-bin  # uses pre-built binary
 ```
 
+**Option C: Docker Image**
+
+A multi-architecture Docker image (linux/amd64 and linux/arm64) is published to GitHub Container Registry on every push to `main` and on tagged releases.
+
+```bash
+# Latest from main branch
+docker pull ghcr.io/barretstorck/forgejo-mcp:main
+
+# Specific version
+docker pull ghcr.io/barretstorck/forgejo-mcp:2.17.0
+
+# Run with stdio transport
+docker run --rm -e FORGEJO_ACCESS_TOKEN="<your-token>" \
+  ghcr.io/barretstorck/forgejo-mcp:main \
+  --transport stdio --url https://your-forgejo-instance.org
+
+# Run with HTTP transport (expose port)
+docker run --rm -p 8080:8080 -e FORGEJO_ACCESS_TOKEN="<your-token>" \
+  ghcr.io/barretstorck/forgejo-mcp:main \
+  --transport http --url https://your-forgejo-instance.org
+```
+
 ### 2. Get Your Access Token
 
 1. Log into your Forgejo instance
@@ -136,11 +158,15 @@ List all my repositories
 | `list_branches` | List all branches in a repository |
 | `create_branch` | Create a new branch |
 | `delete_branch` | Delete a branch |
-| **Files** | |
+| **Files & Directories** | |
 | `get_file_content` | Get the content of a file |
 | `create_file` | Create a new file |
 | `update_file` | Update an existing file |
 | `delete_file` | Delete a file |
+| `list_directory` | List contents of a directory (names, types, paths, sizes) |
+| `get_directory_content` | List directory contents with full metadata (SHA, download URL, HTML URL) |
+| `get_repository_tree` | Get the full file tree of a repository, optionally recursive |
+| `search_repository_contents` | Search for files by name within a repository (case-insensitive) |
 | **Commits** | |
 | `list_repo_commits` | List commits in a repository |
 | **Issues** | |
@@ -164,15 +190,39 @@ List all my repositories
 | `get_pull_request_by_index` | Get a specific pull request |
 | `create_pull_request` | Create a new pull request |
 | `update_pull_request` | Update an existing pull request |
+| `get_pull_request_diff` | Get the diff of a pull request |
+| `list_pull_request_files` | List changed files in a pull request |
+| `merge_pull_request` | Merge a pull request |
 | `list_pull_reviews` | List reviews for a pull request |
 | `get_pull_review` | Get a specific pull request review |
 | `list_pull_review_comments` | List comments on a pull request review |
+| `create_pull_review` | Create a pull request review with optional inline comments |
+| `submit_pull_review` | Submit a pending pull request review |
+| `dismiss_pull_review` | Dismiss a pull request review |
+| `delete_pull_review` | Delete a pending pull request review |
+| `create_review_requests` | Request reviews from specific users or teams |
+| `delete_review_requests` | Cancel pending review requests |
 | **Actions** | |
 | `dispatch_workflow` | Trigger a workflow run via `workflow_dispatch` event |
 | `list_workflow_runs` | List workflow runs with optional filtering by status, event, or SHA |
 | `get_workflow_run` | Get details of a specific workflow run by ID |
 | **Organizations** | |
+| `create_org` | Create an organization |
+| `get_org` | Get organization details |
+| `edit_org` | Edit organization settings |
+| `delete_org` | Delete an organization (destructive and irreversible) |
+| `list_my_orgs` | List your organizations |
+| `list_user_orgs` | List a user's organizations |
+| `list_org_members` | List members of an organization |
+| `check_org_membership` | Check if a user is a member of an organization |
+| `remove_org_member` | Remove a member from an organization |
 | `search_org_teams` | Search for teams in an organization |
+| `list_org_teams` | List teams in an organization |
+| `create_org_team` | Create a team in an organization |
+| `add_team_member` | Add a user to a team |
+| `remove_team_member` | Remove a user from a team |
+| `add_team_repo` | Add a repository to a team |
+| `remove_team_repo` | Remove a repository from a team |
 | **Server** | |
 | `get_forgejo_mcp_server_version` | Get the MCP server version |
 
