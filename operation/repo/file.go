@@ -20,7 +20,8 @@ const (
 	UpdateFileToolName    = "update_file"
 	DeleteFileToolName    = "delete_file"
 	ListDirectoryToolName      = "list_directory"
-	GetDirectoryContentToolName = "get_directory_content"
+	GetDirectoryContentToolName  = "get_directory_content"
+	GetRepositoryTreeToolName    = "get_repository_tree"
 )
 
 var (
@@ -85,6 +86,15 @@ var (
 		mcp.WithString("repo", mcp.Required(), mcp.Description(params.Repo)),
 		mcp.WithString("path", mcp.Description("Directory path relative to repo root. Empty or omitted for root directory.")),
 		mcp.WithString("ref", mcp.Description(params.Ref)),
+	)
+
+	GetRepositoryTreeTool = mcp.NewTool(
+		GetRepositoryTreeToolName,
+		mcp.WithDescription("Get the full file tree of a repository. Returns all files and directories, optionally recursive. Useful for understanding repository structure."),
+		mcp.WithString("owner", mcp.Required(), mcp.Description(params.Owner)),
+		mcp.WithString("repo", mcp.Required(), mcp.Description(params.Repo)),
+		mcp.WithString("ref", mcp.Description(params.Ref)),
+		mcp.WithBoolean("recursive", mcp.Description("Recurse into subdirectories. Default: true.")),
 	)
 )
 
@@ -249,4 +259,44 @@ func GetDirectoryContentFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.C
 		return to.ErrorResult(fmt.Errorf("get directory content err: %v", err))
 	}
 	return to.TextResult(contents)
+}
+
+func resolveRef(owner, repo, ref string) (string, error) {
+	if ref == "" {
+		repoInfo, _, err := forgejo.Client().GetRepo(owner, repo)
+		if err != nil {
+			return "", fmt.Errorf("get repo err: %v", err)
+		}
+		ref = repoInfo.DefaultBranch
+	}
+	return ref, nil
+}
+
+func GetRepositoryTreeFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log.Debugf("Called GetRepositoryTreeFn")
+	owner, ok := req.GetArguments()["owner"].(string)
+	if !ok {
+		return to.ErrorResult(fmt.Errorf("owner is required"))
+	}
+	repo, ok := req.GetArguments()["repo"].(string)
+	if !ok {
+		return to.ErrorResult(fmt.Errorf("repo is required"))
+	}
+	ref, _ := req.GetArguments()["ref"].(string)
+	recursive, ok := req.GetArguments()["recursive"].(bool)
+	if !ok {
+		recursive = true
+	}
+
+	ref, err := resolveRef(owner, repo, ref)
+	if err != nil {
+		return to.ErrorResult(err)
+	}
+
+	opts := forgejo_sdk.GetTreesOptions{Recursive: recursive}
+	tree, _, err := forgejo.Client().GetTrees(owner, repo, ref, opts)
+	if err != nil {
+		return to.ErrorResult(fmt.Errorf("get repository tree err: %v", err))
+	}
+	return to.TextResult(tree)
 }

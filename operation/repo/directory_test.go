@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/forgejo"
@@ -105,6 +106,97 @@ func TestListDirectoryFn_MissingOwner(t *testing.T) {
 		"repo": "testrepo",
 	})
 	_, err := ListDirectoryFn(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for missing owner, got nil")
+	}
+}
+
+// setupTreeMockServer creates a mock that routes requests based on URL path.
+// It handles both /repos/:owner/:repo (GetRepo) and /repos/:owner/:repo/git/trees/:ref (GetTrees).
+func setupTreeMockServer(t *testing.T, repoResponse, treeResponse interface{}) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/git/trees/") {
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(treeResponse)
+			return
+		}
+		// Default: repo info endpoint
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(repoResponse)
+	}))
+	client, err := forgejo_sdk.NewClient(srv.URL, forgejo_sdk.SetForgejoVersion("7.0.0"))
+	if err != nil {
+		t.Fatalf("creating test client: %v", err)
+	}
+	forgejo.SetClientForTesting(client)
+	return srv
+}
+
+func TestGetRepositoryTreeFn_WithRef(t *testing.T) {
+	treeResponse := map[string]interface{}{
+		"sha": "abc123",
+		"tree": []map[string]interface{}{
+			{"path": "README.md", "type": "blob", "size": 100, "sha": "aaa111"},
+			{"path": "src", "type": "tree", "size": 0, "sha": "bbb222"},
+			{"path": "src/main.go", "type": "blob", "size": 2048, "sha": "ccc333"},
+		},
+		"truncated": false,
+	}
+	// When ref is provided, GetRepo is not called, so repoResponse can be nil
+	srv := setupTreeMockServer(t, nil, treeResponse)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner":     "testowner",
+		"repo":      "testrepo",
+		"ref":       "main",
+		"recursive": true,
+	})
+	result, err := GetRepositoryTreeFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetRepositoryTreeFn returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("GetRepositoryTreeFn returned tool error")
+	}
+}
+
+func TestGetRepositoryTreeFn_DefaultRef(t *testing.T) {
+	repoResponse := map[string]interface{}{
+		"default_branch": "main",
+		"name":           "testrepo",
+		"owner":          map[string]interface{}{"login": "testowner"},
+	}
+	treeResponse := map[string]interface{}{
+		"sha": "abc123",
+		"tree": []map[string]interface{}{
+			{"path": "README.md", "type": "blob", "size": 100, "sha": "aaa111"},
+		},
+		"truncated": false,
+	}
+	srv := setupTreeMockServer(t, repoResponse, treeResponse)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner": "testowner",
+		"repo":  "testrepo",
+	})
+	result, err := GetRepositoryTreeFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetRepositoryTreeFn returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("GetRepositoryTreeFn returned tool error")
+	}
+}
+
+func TestGetRepositoryTreeFn_MissingOwner(t *testing.T) {
+	req := newCallToolRequest(map[string]interface{}{
+		"repo": "testrepo",
+	})
+	_, err := GetRepositoryTreeFn(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error for missing owner, got nil")
 	}
