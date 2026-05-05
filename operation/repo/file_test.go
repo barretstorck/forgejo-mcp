@@ -97,6 +97,125 @@ func TestCreateFileFn_Base64EncodesContent(t *testing.T) {
 	}
 }
 
+// setupGetContentsMockServer creates an httptest server that returns the given
+// raw bytes as a Forgejo ContentsResponse with base64-encoded content.
+// It wires the test client through forgejo.SetClientForTesting.
+func setupGetContentsMockServer(t *testing.T, name, path, sha string, raw []byte) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		encoding := "base64"
+		content := base64.StdEncoding.EncodeToString(raw)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"name":     name,
+			"path":     path,
+			"sha":      sha,
+			"type":     "file",
+			"size":     len(raw),
+			"encoding": encoding,
+			"content":  content,
+		})
+	}))
+
+	client, err := forgejo_sdk.NewClient(srv.URL, forgejo_sdk.SetForgejoVersion("7.0.0"))
+	if err != nil {
+		t.Fatalf("creating test client: %v", err)
+	}
+	forgejo.SetClientForTesting(client)
+	return srv
+}
+
+// extractToolResultFields unmarshals the JSON wrapper produced by to.TextResult
+// (which is `{"Result": <ContentsResponse>}`) and returns the inner encoding and
+// content fields. Both fields are pointer-typed in the SDK; the helper returns
+// "" for nil pointers.
+func extractToolResultFields(t *testing.T, result *mcp.CallToolResult) (encoding, content string) {
+	t.Helper()
+	if len(result.Content) == 0 {
+		t.Fatalf("tool result has no content blocks")
+	}
+	tc, ok := result.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("tool result first block is %T, want mcp.TextContent", result.Content[0])
+	}
+	var wrapper struct {
+		Result struct {
+			Encoding *string `json:"encoding"`
+			Content  *string `json:"content"`
+		} `json:"Result"`
+	}
+	if err := json.Unmarshal([]byte(tc.Text), &wrapper); err != nil {
+		t.Fatalf("unmarshal tool result text %q: %v", tc.Text, err)
+	}
+	if wrapper.Result.Encoding != nil {
+		encoding = *wrapper.Result.Encoding
+	}
+	if wrapper.Result.Content != nil {
+		content = *wrapper.Result.Content
+	}
+	return encoding, content
+}
+
+func TestGetFileContentFn_PlainTextDecoded(t *testing.T) {
+	plainText := "package main\n\nfunc main() {}\n"
+	srv := setupGetContentsMockServer(t, "main.go", "main.go", "sha1", []byte(plainText))
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner":    "testowner",
+		"repo":     "testrepo",
+		"ref":      "main",
+		"filePath": "main.go",
+	})
+
+	result, err := GetFileContentFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetFileContentFn returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("GetFileContentFn returned tool error")
+	}
+
+	encoding, content := extractToolResultFields(t, result)
+	if encoding != "utf-8" {
+		t.Errorf("encoding = %q, want %q", encoding, "utf-8")
+	}
+	if content != plainText {
+		t.Errorf("content = %q, want %q", content, plainText)
+	}
+}
+
+func TestGetFileContentFn_BinaryStaysBase64(t *testing.T) {
+	pngHeader := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0x00, 0x00, 0x00, 0x0D}
+	srv := setupGetContentsMockServer(t, "logo.png", "img/logo.png", "sha2", pngHeader)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner":    "testowner",
+		"repo":     "testrepo",
+		"ref":      "main",
+		"filePath": "img/logo.png",
+	})
+
+	result, err := GetFileContentFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetFileContentFn returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("GetFileContentFn returned tool error")
+	}
+
+	encoding, content := extractToolResultFields(t, result)
+	if encoding != "base64" {
+		t.Errorf("encoding = %q, want %q", encoding, "base64")
+	}
+	expected := base64.StdEncoding.EncodeToString(pngHeader)
+	if content != expected {
+		t.Errorf("content = %q, want %q (untouched base64)", content, expected)
+	}
+}
+
 func TestUpdateFileFn_Base64EncodesContent(t *testing.T) {
 	srv, captured := setupMockServer(t)
 	defer srv.Close()
