@@ -9,6 +9,7 @@ import (
 	"codeberg.org/goern/forgejo-mcp/v2/operation/params"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/forgejo"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/log"
+	"codeberg.org/goern/forgejo-mcp/v2/pkg/textcheck"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/to"
 
 	forgejo_sdk "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3"
@@ -29,7 +30,7 @@ const (
 var (
 	GetFileContentTool = mcp.NewTool(
 		GetFileToolName,
-		mcp.WithDescription("Get file content"),
+		mcp.WithDescription("Get file content. The response's `encoding` field is `\"utf-8\"` when the file is plain-text (content is the decoded string) or `\"base64\"` when the file is binary (content is base64-encoded bytes). The `sha` field is preserved in both cases for use with update_file."),
 		mcp.WithString("owner", mcp.Required(), mcp.Description(params.Owner)),
 		mcp.WithString("repo", mcp.Required(), mcp.Description(params.Repo)),
 		mcp.WithString("ref", mcp.Required(), mcp.Description(params.Ref)),
@@ -128,6 +129,22 @@ func GetFileContentFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTo
 	if err != nil {
 		return to.ErrorResult(fmt.Errorf("get file err: %v", err))
 	}
+
+	// If the SDK returned base64-encoded content, decode it and — when the
+	// bytes are plain UTF-8 text — replace the response's content/encoding
+	// fields so the agent receives readable text instead of base64.
+	if content != nil &&
+		content.Encoding != nil && *content.Encoding == "base64" &&
+		content.Content != nil {
+		if decoded, decErr := base64.StdEncoding.DecodeString(*content.Content); decErr == nil &&
+			textcheck.IsPlainText(decoded) {
+			s := string(decoded)
+			enc := "utf-8"
+			content.Content = &s
+			content.Encoding = &enc
+		}
+	}
+
 	return to.TextResult(content)
 }
 
