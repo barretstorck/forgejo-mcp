@@ -159,7 +159,7 @@ List all my repositories
 | `create_branch` | Create a new branch |
 | `delete_branch` | Delete a branch |
 | **Files & Directories** | |
-| `get_file_content` | Get the content of a file |
+| `get_file_content` | Get the content of a file (plain-text returned as utf-8, binary as base64) |
 | `create_file` | Create a new file |
 | `update_file` | Update an existing file |
 | `delete_file` | Delete a file |

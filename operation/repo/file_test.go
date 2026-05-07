@@ -130,7 +130,7 @@ func setupGetContentsMockServer(t *testing.T, name, path, sha string, raw []byte
 // (which is `{"Result": <ContentsResponse>}`) and returns the inner encoding and
 // content fields. Both fields are pointer-typed in the SDK; the helper returns
 // "" for nil pointers.
-func extractToolResultFields(t *testing.T, result *mcp.CallToolResult) (encoding, content string) {
+func extractToolResultFields(t *testing.T, result *mcp.CallToolResult) (encoding, content, sha string) {
 	t.Helper()
 	if len(result.Content) == 0 {
 		t.Fatalf("tool result has no content blocks")
@@ -143,6 +143,7 @@ func extractToolResultFields(t *testing.T, result *mcp.CallToolResult) (encoding
 		Result struct {
 			Encoding *string `json:"encoding"`
 			Content  *string `json:"content"`
+			SHA      string  `json:"sha"`
 		} `json:"Result"`
 	}
 	if err := json.Unmarshal([]byte(tc.Text), &wrapper); err != nil {
@@ -154,7 +155,8 @@ func extractToolResultFields(t *testing.T, result *mcp.CallToolResult) (encoding
 	if wrapper.Result.Content != nil {
 		content = *wrapper.Result.Content
 	}
-	return encoding, content
+	sha = wrapper.Result.SHA
+	return encoding, content, sha
 }
 
 func TestGetFileContentFn_PlainTextDecoded(t *testing.T) {
@@ -177,12 +179,15 @@ func TestGetFileContentFn_PlainTextDecoded(t *testing.T) {
 		t.Fatalf("GetFileContentFn returned tool error")
 	}
 
-	encoding, content := extractToolResultFields(t, result)
+	encoding, content, sha := extractToolResultFields(t, result)
 	if encoding != "utf-8" {
 		t.Errorf("encoding = %q, want %q", encoding, "utf-8")
 	}
 	if content != plainText {
 		t.Errorf("content = %q, want %q", content, plainText)
+	}
+	if sha != "sha1" {
+		t.Errorf("sha = %q, want %q (preserved across plain-text decoding)", sha, "sha1")
 	}
 }
 
@@ -206,13 +211,47 @@ func TestGetFileContentFn_BinaryStaysBase64(t *testing.T) {
 		t.Fatalf("GetFileContentFn returned tool error")
 	}
 
-	encoding, content := extractToolResultFields(t, result)
+	encoding, content, sha := extractToolResultFields(t, result)
 	if encoding != "base64" {
 		t.Errorf("encoding = %q, want %q", encoding, "base64")
 	}
 	expected := base64.StdEncoding.EncodeToString(pngHeader)
 	if content != expected {
 		t.Errorf("content = %q, want %q (untouched base64)", content, expected)
+	}
+	if sha != "sha2" {
+		t.Errorf("sha = %q, want %q (preserved across base64 passthrough)", sha, "sha2")
+	}
+}
+
+func TestGetFileContentFn_EmptyFileBecomesUtf8(t *testing.T) {
+	srv := setupGetContentsMockServer(t, "empty.txt", "empty.txt", "sha3", []byte{})
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner":    "testowner",
+		"repo":     "testrepo",
+		"ref":      "main",
+		"filePath": "empty.txt",
+	})
+
+	result, err := GetFileContentFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetFileContentFn returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("GetFileContentFn returned tool error")
+	}
+
+	encoding, content, sha := extractToolResultFields(t, result)
+	if encoding != "utf-8" {
+		t.Errorf("encoding = %q, want %q", encoding, "utf-8")
+	}
+	if content != "" {
+		t.Errorf("content = %q, want empty string", content)
+	}
+	if sha != "sha3" {
+		t.Errorf("sha = %q, want %q", sha, "sha3")
 	}
 }
 
