@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"codeberg.org/goern/forgejo-mcp/v2/operation/params"
+	flagPkg "codeberg.org/goern/forgejo-mcp/v2/pkg/flag"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/forgejo"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/log"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/textcheck"
@@ -109,6 +110,45 @@ var (
 		mcp.WithString("ref", mcp.Description(params.Ref)),
 	)
 )
+
+// encodeContent converts agent-supplied content into the base64 form the
+// Forgejo SDK expects. encoding is case-insensitive; supported values are
+// "utf-8" (default; treats content as plain text and base64-encodes it) and
+// "base64" (treats content as already-encoded bytes and validates them).
+// Decoded payload size is checked against flagPkg.MaxFileBytes; oversize
+// input is rejected, and the base64 branch does a cheap pre-decode size
+// guard so multi-GB payloads are rejected without allocating the decoded
+// buffer.
+func encodeContent(content, encoding string) (string, error) {
+	enc := strings.ToLower(encoding)
+	if enc == "" {
+		enc = "utf-8"
+	}
+	max := flagPkg.MaxFileBytes
+	switch enc {
+	case "utf-8":
+		if int64(len(content)) > max {
+			return "", fmt.Errorf("content exceeds size limit (%d > %d bytes)", len(content), max)
+		}
+		return base64.StdEncoding.EncodeToString([]byte(content)), nil
+	case "base64":
+		// Pre-decode guard: base64 inflates by 4/3. Reject obvious oversize
+		// before allocating the decoded buffer. The +4 covers padding rounding.
+		if int64(len(content)) > max*4/3+4 {
+			return "", fmt.Errorf("content exceeds size limit (base64-encoded, decoded would exceed %d bytes)", max)
+		}
+		decoded, err := base64.StdEncoding.DecodeString(content)
+		if err != nil {
+			return "", fmt.Errorf("invalid base64 content: %v", err)
+		}
+		if int64(len(decoded)) > max {
+			return "", fmt.Errorf("content exceeds size limit (%d > %d bytes)", len(decoded), max)
+		}
+		return content, nil
+	default:
+		return "", fmt.Errorf("unsupported encoding %q: want \"utf-8\" or \"base64\"", encoding)
+	}
+}
 
 func GetFileContentFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	log.Debugf("Called GetFileFn")

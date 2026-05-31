@@ -7,8 +7,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	flagPkg "codeberg.org/goern/forgejo-mcp/v2/pkg/flag"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/forgejo"
 
 	forgejo_sdk "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3"
@@ -252,6 +254,65 @@ func TestGetFileContentFn_EmptyFileBecomesUtf8(t *testing.T) {
 	}
 	if sha != "sha3" {
 		t.Errorf("sha = %q, want %q", sha, "sha3")
+	}
+}
+
+func TestEncodeContent(t *testing.T) {
+	// Lock test to a small, predictable cap so size-limit cases are easy to
+	// reason about. Restore after.
+	orig := flagPkg.MaxFileBytes
+	flagPkg.MaxFileBytes = 100
+	defer func() { flagPkg.MaxFileBytes = orig }()
+
+	const helloB64 = "aGVsbG8=" // base64 of "hello"
+
+	cases := []struct {
+		name       string
+		content    string
+		encoding   string
+		wantOut    string // expected SDK-ready base64; "" if wantErrSub != ""
+		wantErrSub string // substring expected in error message; "" if no error expected
+	}{
+		// happy paths
+		{"utf-8 default (empty encoding)", "hello", "", helloB64, ""},
+		{"utf-8 explicit lowercase", "hello", "utf-8", helloB64, ""},
+		{"utf-8 explicit uppercase", "hello", "UTF-8", helloB64, ""},
+		{"utf-8 mixed case", "hello", "Utf-8", helloB64, ""},
+		{"base64 valid", helloB64, "base64", helloB64, ""},
+		{"base64 uppercase param", helloB64, "BASE64", helloB64, ""},
+		{"empty utf-8 content", "", "utf-8", "", ""},
+		{"empty base64 content", "", "base64", "", ""},
+
+		// rejections
+		{"unknown encoding", "hello", "ascii", "", `unsupported encoding "ascii"`},
+		{"malformed base64", "not_valid_base64!", "base64", "", "invalid base64 content"},
+		{"utf-8 exceeds size", string(make([]byte, 101)), "utf-8", "", "content exceeds size limit"},
+		// base64 pre-decode guard: input length > 100*4/3+4 = 137
+		{"base64 pre-decode oversize", strings.Repeat("A", 138), "base64", "", "base64-encoded, decoded would exceed"},
+		// base64 within pre-decode guard but decoded > limit: 101 bytes decoded → 136 base64 chars (with padding "==")
+		{"base64 post-decode oversize", base64.StdEncoding.EncodeToString(make([]byte, 101)), "base64", "", "content exceeds size limit"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := encodeContent(tc.content, tc.encoding)
+			if tc.wantErrSub != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil (out=%q)", tc.wantErrSub, got)
+				}
+				if !strings.Contains(err.Error(), tc.wantErrSub) {
+					t.Errorf("error = %q, want substring %q", err.Error(), tc.wantErrSub)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.wantOut {
+				t.Errorf("encodeContent(%q, %q) = %q, want %q",
+					tc.content, tc.encoding, got, tc.wantOut)
+			}
+		})
 	}
 }
 
