@@ -27,7 +27,8 @@ const (
 
 	// File parameters
 	FilePath      = "File path"
-	Content       = "Content (plain text, will be base64-encoded automatically)"
+	Content       = "File content. Plain text when encoding=utf-8 (default); base64-encoded bytes when encoding=base64."
+	Encoding      = "Content encoding: \"utf-8\" (plain text, default) or \"base64\" (pre-encoded bytes for binary files such as PDFs or images)."
 	Message       = "Commit message"
 	BranchName    = "Branch name"
 	NewBranchName = "New branch name"
