@@ -159,9 +159,9 @@ List all my repositories
 | `create_branch` | Create a new branch |
 | `delete_branch` | Delete a branch |
 | **Files & Directories** | |
-| `get_file_content` | Get the content of a file |
-| `create_file` | Create a new file |
-| `update_file` | Update an existing file |
+| `get_file_content` | Get the content of a file (plain-text returned as utf-8, binary as base64) |
+| `create_file` | Create a new file. Set `encoding` to `"base64"` for binary content (PDFs, images). |
+| `update_file` | Update an existing file. Set `encoding` to `"base64"` for binary content. |
 | `delete_file` | Delete a file |
 | `list_directory` | List contents of a directory (names, types, paths, sizes) |
 | `get_directory_content` | List directory contents with full metadata (SHA, download URL, HTML URL) |
@@ -274,6 +274,7 @@ You can configure the server using command-line arguments or environment variabl
 | `--http-port` | - | Port for streamable HTTP mode (default: 8080) |
 | `--cli` | - | Enter CLI mode for direct tool invocation |
 | `--user-agent` | `FORGEJO_USER_AGENT` | HTTP User-Agent header (default: `forgejo-mcp/<version>`) |
+| - | `FORGEJO_MCP_MAX_FILE_BYTES` | Maximum decoded byte size accepted by `create_file` / `update_file` (default: `26214400` — 25 MiB). |
 
 Command-line arguments take priority over environment variables.
 

@@ -188,6 +188,22 @@ func initConfig() {
 			}
 		}
 	}
+
+	// Max file bytes — caps decoded content for create_file / update_file.
+	if envValue := os.Getenv("FORGEJO_MCP_MAX_FILE_BYTES"); envValue != "" {
+		parsed, ok := flagPkg.ParseMaxFileBytes(envValue)
+		if !ok {
+			log.Warn("Invalid FORGEJO_MCP_MAX_FILE_BYTES value, using default",
+				log.StringField("value", envValue),
+				log.IntField("default_bytes", int(flagPkg.DefaultMaxFileBytes)),
+			)
+		} else {
+			log.Debug("Using FORGEJO_MCP_MAX_FILE_BYTES environment variable",
+				log.IntField("bytes", int(parsed)),
+			)
+		}
+		flagPkg.MaxFileBytes = parsed
+	}
 }
 
 func validateURL(urlStr string) error {
