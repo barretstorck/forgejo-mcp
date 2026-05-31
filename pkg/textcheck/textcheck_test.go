@@ -21,6 +21,7 @@ func TestIsPlainText(t *testing.T) {
 		{"empty", []byte{}, true},
 		{"ascii source", []byte("package main\n\nfunc main() {}\n"), true},
 		{"utf8 multibyte", []byte("héllo 🌍 world"), true},
+		{"utf8 bom", []byte{0xEF, 0xBB, 0xBF, 'h', 'i'}, true},
 		{"png header", []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0x00, 0x00, 0x00, 0x0D}, false},
 		{"utf16 le bom", []byte{0xFF, 0xFE, 'h', 0x00, 'i', 0x00}, false},
 		{"nul at byte 4000", nulInHead, false},
