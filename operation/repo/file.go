@@ -178,8 +178,11 @@ func GetFileContentFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTo
 	if content != nil &&
 		content.Encoding != nil && *content.Encoding == "base64" &&
 		content.Content != nil {
-		if decoded, decErr := base64.StdEncoding.DecodeString(*content.Content); decErr == nil &&
-			textcheck.IsPlainText(decoded) {
+		decoded, decErr := base64.StdEncoding.DecodeString(*content.Content)
+		if decErr != nil {
+			log.Debugf("get_file_content: SDK returned encoding=base64 but content failed to decode (%s/%s/%s): %v",
+				owner, repo, filePath, decErr)
+		} else if textcheck.IsPlainText(decoded) {
 			s := string(decoded)
 			enc := "utf-8"
 			content.Content = &s

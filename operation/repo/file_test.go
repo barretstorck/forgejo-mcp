@@ -532,3 +532,126 @@ func TestUpdateFileFn_Base64EncodesContent(t *testing.T) {
 		t.Errorf("content sent to API is not correctly base64-encoded\n  got decoded: %q\n  want:        %q", string(decoded), plainText)
 	}
 }
+
+// setupGetContentsMockServerRaw is a more flexible variant of
+// setupGetContentsMockServer: the caller supplies the encoding pointer
+// (nil for "not present") and the content string verbatim. Used by the
+// PR-#1 polish tests that need to mock edge-case SDK responses.
+func setupGetContentsMockServerRaw(t *testing.T, name, path, sha string, encoding *string, content *string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		resp := map[string]interface{}{
+			"name": name,
+			"path": path,
+			"sha":  sha,
+			"type": "file",
+			"size": 0,
+		}
+		if encoding != nil {
+			resp["encoding"] = *encoding
+		}
+		if content != nil {
+			resp["content"] = *content
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	client, err := forgejo_sdk.NewClient(srv.URL, forgejo_sdk.SetForgejoVersion("7.0.0"))
+	if err != nil {
+		t.Fatalf("creating test client: %v", err)
+	}
+	forgejo.SetClientForTesting(client)
+	return srv
+}
+
+func TestGetFileContentFn_NilEncodingPassthrough(t *testing.T) {
+	content := "anything"
+	srv := setupGetContentsMockServerRaw(t, "x", "x", "sha", nil /*encoding*/, &content)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner": "o", "repo": "r", "ref": "main", "filePath": "x",
+	})
+	result, err := GetFileContentFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetFileContentFn returned error: %v", err)
+	}
+	if result == nil || result.IsError {
+		t.Fatalf("unexpected tool error")
+	}
+	// Encoding was nil in the SDK response, so the rewrite branch should be
+	// skipped; the content field should come through untouched.
+	enc, gotContent, _ := extractToolResultFields(t, result)
+	if enc != "" {
+		t.Errorf("encoding = %q, want \"\" (nil pointer in response)", enc)
+	}
+	if gotContent != content {
+		t.Errorf("content = %q, want %q", gotContent, content)
+	}
+}
+
+func TestGetFileContentFn_NilContentPassthrough(t *testing.T) {
+	enc := "base64"
+	srv := setupGetContentsMockServerRaw(t, "x", "x", "sha", &enc, nil /*content*/)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner": "o", "repo": "r", "ref": "main", "filePath": "x",
+	})
+	result, err := GetFileContentFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetFileContentFn returned error: %v", err)
+	}
+	if result == nil || result.IsError {
+		t.Fatalf("unexpected tool error")
+	}
+	// Just asserting we didn't panic; the content branch was nil so the
+	// rewrite is skipped and the SDK response is forwarded as-is.
+}
+
+func TestGetFileContentFn_AlreadyUtf8Passthrough(t *testing.T) {
+	enc := "utf-8"
+	content := "already decoded"
+	srv := setupGetContentsMockServerRaw(t, "x", "x", "sha", &enc, &content)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner": "o", "repo": "r", "ref": "main", "filePath": "x",
+	})
+	result, err := GetFileContentFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetFileContentFn returned error: %v", err)
+	}
+	gotEnc, gotContent, _ := extractToolResultFields(t, result)
+	if gotEnc != "utf-8" {
+		t.Errorf("encoding = %q, want %q (passthrough)", gotEnc, "utf-8")
+	}
+	if gotContent != content {
+		t.Errorf("content = %q, want %q (passthrough)", gotContent, content)
+	}
+}
+
+func TestGetFileContentFn_MalformedBase64FallsThrough(t *testing.T) {
+	enc := "base64"
+	content := "@@@not-base64@@@"
+	srv := setupGetContentsMockServerRaw(t, "x", "x", "sha", &enc, &content)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner": "o", "repo": "r", "ref": "main", "filePath": "x",
+	})
+	result, err := GetFileContentFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetFileContentFn returned error: %v", err)
+	}
+	// SDK said base64 but content didn't decode — handler should NOT panic
+	// and should forward the original (broken) base64 string unchanged.
+	gotEnc, gotContent, _ := extractToolResultFields(t, result)
+	if gotEnc != "base64" {
+		t.Errorf("encoding = %q, want %q (untouched on decode failure)", gotEnc, "base64")
+	}
+	if gotContent != content {
+		t.Errorf("content = %q, want %q (untouched on decode failure)", gotContent, content)
+	}
+}
