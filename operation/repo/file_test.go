@@ -406,6 +406,97 @@ func TestCreateFileFn_DefaultEncodingStillBase64Encodes(t *testing.T) {
 	}
 }
 
+func TestUpdateFileFn_Base64EncodingPassesThrough(t *testing.T) {
+	srv, captured := setupMockServer(t)
+	defer srv.Close()
+
+	pdfMagic := []byte{0x25, 0x50, 0x44, 0x46, 0x2D} // "%PDF-"
+	encoded := base64.StdEncoding.EncodeToString(pdfMagic)
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner":       "testowner",
+		"repo":        "testrepo",
+		"filePath":    "report.pdf",
+		"content":     encoded,
+		"encoding":    "base64",
+		"message":     "update pdf",
+		"branch_name": "main",
+		"sha":         "prevsha",
+	})
+
+	result, err := UpdateFileFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("UpdateFileFn returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("UpdateFileFn returned tool error")
+	}
+
+	var body apiFileRequest
+	if err := json.Unmarshal(*captured, &body); err != nil {
+		t.Fatalf("unmarshaling captured body: %v", err)
+	}
+	if body.Content != encoded {
+		t.Errorf("API received content = %q, want raw passthrough %q", body.Content, encoded)
+	}
+}
+
+func TestUpdateFileFn_MalformedBase64ReturnsError(t *testing.T) {
+	srv, captured := setupMockServer(t)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner":       "testowner",
+		"repo":        "testrepo",
+		"filePath":    "x.bin",
+		"content":     "not_valid_base64!",
+		"encoding":    "base64",
+		"message":     "x",
+		"branch_name": "main",
+		"sha":         "prevsha",
+	})
+
+	_, err := UpdateFileFn(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for malformed base64, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid base64 content") {
+		t.Errorf("error = %q, want substring %q", err.Error(), "invalid base64 content")
+	}
+	if captured != nil && len(*captured) > 0 {
+		t.Errorf("SDK was called despite validation failure")
+	}
+}
+
+func TestUpdateFileFn_DefaultEncodingStillBase64Encodes(t *testing.T) {
+	srv, captured := setupMockServer(t)
+	defer srv.Close()
+
+	plainText := "package main\n"
+	req := newCallToolRequest(map[string]interface{}{
+		"owner":       "testowner",
+		"repo":        "testrepo",
+		"filePath":    "main.go",
+		"content":     plainText,
+		"message":     "x",
+		"branch_name": "main",
+		"sha":         "prevsha",
+	})
+
+	if _, err := UpdateFileFn(context.Background(), req); err != nil {
+		t.Fatalf("UpdateFileFn returned error: %v", err)
+	}
+
+	var body apiFileRequest
+	if err := json.Unmarshal(*captured, &body); err != nil {
+		t.Fatalf("unmarshaling captured body: %v", err)
+	}
+	expected := base64.StdEncoding.EncodeToString([]byte(plainText))
+	if body.Content != expected {
+		t.Errorf("API received content = %q, want base64(%q) = %q", body.Content, plainText, expected)
+	}
+}
+
 func TestUpdateFileFn_Base64EncodesContent(t *testing.T) {
 	srv, captured := setupMockServer(t)
 	defer srv.Close()
