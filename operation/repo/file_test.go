@@ -316,6 +316,96 @@ func TestEncodeContent(t *testing.T) {
 	}
 }
 
+func TestCreateFileFn_Base64EncodingPassesThrough(t *testing.T) {
+	srv, captured := setupMockServer(t)
+	defer srv.Close()
+
+	pngHeader := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+	encoded := base64.StdEncoding.EncodeToString(pngHeader)
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner":       "testowner",
+		"repo":        "testrepo",
+		"filePath":    "logo.png",
+		"content":     encoded,
+		"encoding":    "base64",
+		"message":     "add logo",
+		"branch_name": "main",
+	})
+
+	result, err := CreateFileFn(context.Background(), req)
+	if err != nil {
+		t.Fatalf("CreateFileFn returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("CreateFileFn returned tool error")
+	}
+
+	var body apiFileRequest
+	if err := json.Unmarshal(*captured, &body); err != nil {
+		t.Fatalf("unmarshaling captured body: %v", err)
+	}
+	if body.Content != encoded {
+		t.Errorf("API received content = %q, want raw passthrough %q", body.Content, encoded)
+	}
+}
+
+func TestCreateFileFn_UnknownEncodingReturnsError(t *testing.T) {
+	srv, captured := setupMockServer(t)
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{
+		"owner":       "testowner",
+		"repo":        "testrepo",
+		"filePath":    "test.txt",
+		"content":     "hello",
+		"encoding":    "ascii",
+		"message":     "x",
+		"branch_name": "main",
+	})
+
+	_, err := CreateFileFn(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for unknown encoding, got nil")
+	}
+	if !strings.Contains(err.Error(), `unsupported encoding "ascii"`) {
+		t.Errorf("error = %q, want substring %q", err.Error(), `unsupported encoding "ascii"`)
+	}
+	if captured != nil && len(*captured) > 0 {
+		t.Errorf("SDK was called despite validation failure; captured = %q", string(*captured))
+	}
+}
+
+func TestCreateFileFn_DefaultEncodingStillBase64Encodes(t *testing.T) {
+	// Back-compat: callers that don't pass `encoding` should still get the
+	// original "content is plain text, server base64-encodes it" behavior.
+	srv, captured := setupMockServer(t)
+	defer srv.Close()
+
+	plainText := "package main\n"
+	req := newCallToolRequest(map[string]interface{}{
+		"owner":       "testowner",
+		"repo":        "testrepo",
+		"filePath":    "main.go",
+		"content":     plainText, // no encoding param
+		"message":     "x",
+		"branch_name": "main",
+	})
+
+	if _, err := CreateFileFn(context.Background(), req); err != nil {
+		t.Fatalf("CreateFileFn returned error: %v", err)
+	}
+
+	var body apiFileRequest
+	if err := json.Unmarshal(*captured, &body); err != nil {
+		t.Fatalf("unmarshaling captured body: %v", err)
+	}
+	expected := base64.StdEncoding.EncodeToString([]byte(plainText))
+	if body.Content != expected {
+		t.Errorf("API received content = %q, want base64(%q) = %q", body.Content, plainText, expected)
+	}
+}
+
 func TestUpdateFileFn_Base64EncodesContent(t *testing.T) {
 	srv, captured := setupMockServer(t)
 	defer srv.Close()

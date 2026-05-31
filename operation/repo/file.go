@@ -40,11 +40,12 @@ var (
 
 	CreateFileTool = mcp.NewTool(
 		CreateFileToolName,
-		mcp.WithDescription("Create file"),
+		mcp.WithDescription("Create file. The `encoding` parameter controls how `content` is interpreted: `\"utf-8\"` (default) treats content as plain text and the server base64-encodes it; `\"base64\"` treats content as already-base64-encoded bytes and passes them through (use this for binary files such as PDFs or images). Decoded content larger than the server's size cap (default 25 MiB, see FORGEJO_MCP_MAX_FILE_BYTES) is rejected."),
 		mcp.WithString("owner", mcp.Required(), mcp.Description(params.Owner)),
 		mcp.WithString("repo", mcp.Required(), mcp.Description(params.Repo)),
 		mcp.WithString("filePath", mcp.Required(), mcp.Description(params.FilePath)),
 		mcp.WithString("content", mcp.Required(), mcp.Description(params.Content)),
+		mcp.WithString("encoding", mcp.Description(params.Encoding)),
 		mcp.WithString("message", mcp.Required(), mcp.Description(params.Message)),
 		mcp.WithString("branch_name", mcp.Required(), mcp.Description(params.BranchName)),
 		mcp.WithString("new_branch_name", mcp.Description(params.NewBranchName)),
@@ -194,19 +195,26 @@ func CreateFileFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	repo, _ := req.GetArguments()["repo"].(string)
 	filePath, _ := req.GetArguments()["filePath"].(string)
 	content, _ := req.GetArguments()["content"].(string)
+	encoding, _ := req.GetArguments()["encoding"].(string)
 	message, _ := req.GetArguments()["message"].(string)
 	branchName, _ := req.GetArguments()["branch_name"].(string)
 	newBranchName, ok := req.GetArguments()["new_branch_name"].(string)
 	if !ok || newBranchName == "" {
 		newBranchName = ""
 	}
+
+	sdkContent, err := encodeContent(content, encoding)
+	if err != nil {
+		return to.ErrorResult(err)
+	}
+
 	opt := forgejo_sdk.CreateFileOptions{
 		FileOptions: forgejo_sdk.FileOptions{
 			Message:       message,
 			BranchName:    branchName,
 			NewBranchName: newBranchName,
 		},
-		Content: base64.StdEncoding.EncodeToString([]byte(content)),
+		Content: sdkContent,
 	}
 	fileResp, _, err := forgejo.Client().CreateFile(owner, repo, filePath, opt)
 	if err != nil {
