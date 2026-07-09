@@ -31,11 +31,12 @@ var (
 	cache = doccache.New(256)
 )
 
-// RegisterTool registers the document tools. get_document_page_image is
-// added in Task 10.
+// RegisterTool registers the document tools: get_document_text,
+// search_documents, and get_document_page_image.
 func RegisterTool(s *server.MCPServer) {
 	s.AddTool(GetDocumentTextTool, GetDocumentTextFn)
 	s.AddTool(SearchDocumentsTool, SearchDocumentsFn)
+	s.AddTool(GetDocumentPageImageTool, GetDocumentPageImageFn)
 }
 
 // excluded reports whether a repo path matches DOCUMENT_EXCLUDE_GLOBS.
