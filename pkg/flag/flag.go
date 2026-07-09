@@ -26,6 +26,11 @@ var (
 	// ToolsEnabled is the tool allowlist from TOOLS_ENABLED. nil or empty
 	// means all tools are exposed (backward compatible).
 	ToolsEnabled []string
+
+	// DocumentExcludeGlobs excludes matching paths from document extraction
+	// and search. Patterns: path.Match syntax against the full repo path,
+	// plus "dir/**" prefix patterns.
+	DocumentExcludeGlobs []string
 )
 
 // ParseMaxFileBytes parses a FORGEJO_MCP_MAX_FILE_BYTES env-var value.
@@ -52,4 +57,10 @@ func ParseToolsEnabled(s string) []string {
 		}
 	}
 	return out
+}
+
+// ParseExcludeGlobs splits a comma-separated glob list, trimming
+// whitespace and dropping empty items.
+func ParseExcludeGlobs(s string) []string {
+	return ParseToolsEnabled(s) // same parsing semantics
 }

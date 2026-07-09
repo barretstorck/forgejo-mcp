@@ -31,11 +31,29 @@ var (
 	cache = doccache.New(256)
 )
 
-// RegisterTool registers the document tools. Only get_document_text is
-// implemented so far; search_documents and get_document_page_image are
-// added in Tasks 9 and 10 respectively.
+// RegisterTool registers the document tools. get_document_page_image is
+// added in Task 10.
 func RegisterTool(s *server.MCPServer) {
 	s.AddTool(GetDocumentTextTool, GetDocumentTextFn)
+	s.AddTool(SearchDocumentsTool, SearchDocumentsFn)
+}
+
+// excluded reports whether a repo path matches DOCUMENT_EXCLUDE_GLOBS.
+// Supported: path.Match patterns against the full path, and "dir/**"
+// prefix patterns.
+func excluded(p string) bool {
+	for _, g := range flagPkg.DocumentExcludeGlobs {
+		if strings.HasSuffix(g, "/**") {
+			if strings.HasPrefix(p, strings.TrimSuffix(g, "**")) {
+				return true
+			}
+			continue
+		}
+		if ok, _ := path.Match(g, p); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // docKind classifies a path by extension: "pdf", "image", "docx", "xlsx",

@@ -57,3 +57,10 @@ func TestParseToolsEnabled(t *testing.T) {
 		}
 	}
 }
+
+func TestParseExcludeGlobs(t *testing.T) {
+	got := ParseExcludeGlobs(" Secret/** , *.bak ,")
+	if len(got) != 2 || got[0] != "Secret/**" || got[1] != "*.bak" {
+		t.Fatalf("ParseExcludeGlobs = %v", got)
+	}
+}

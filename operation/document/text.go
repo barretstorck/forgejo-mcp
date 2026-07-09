@@ -68,6 +68,9 @@ func GetDocumentTextFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 	if !ok {
 		return to.ErrorResult(fmt.Errorf("filePath is required"))
 	}
+	if excluded(filePath) {
+		return to.ErrorResult(fmt.Errorf("this path is excluded from document tools"))
+	}
 	kind := docKind(filePath)
 	if kind == "" {
 		return to.ErrorResult(fmt.Errorf("%s is not a supported document type (pdf, png, jpg, webp, docx, xlsx); use get_file_content for plain files", filePath))

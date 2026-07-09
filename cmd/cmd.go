@@ -212,6 +212,14 @@ func initConfig() {
 			log.IntField("count", len(flagPkg.ToolsEnabled)),
 		)
 	}
+
+	// Document exclusion globs for the document tools.
+	if envValue := os.Getenv("DOCUMENT_EXCLUDE_GLOBS"); envValue != "" {
+		flagPkg.DocumentExcludeGlobs = flagPkg.ParseExcludeGlobs(envValue)
+		log.Info("DOCUMENT_EXCLUDE_GLOBS configured",
+			log.IntField("count", len(flagPkg.DocumentExcludeGlobs)),
+		)
+	}
 }
 
 func validateURL(urlStr string) error {

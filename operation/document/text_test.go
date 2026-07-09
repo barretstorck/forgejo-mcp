@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	flagPkg "codeberg.org/goern/forgejo-mcp/v2/pkg/flag"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/forgejo"
 	forgejo_sdk "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -111,5 +112,24 @@ func TestGetDocumentText_UnsupportedExtension(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "get_file_content") {
 		t.Fatalf("error must suggest get_file_content, got: %v", err)
+	}
+}
+
+// TestGetDocumentText_ExcludedPath verifies excluded() is wired into
+// GetDocumentTextFn too — the privacy boundary applies to direct reads, not
+// just search_documents.
+func TestGetDocumentText_ExcludedPath(t *testing.T) {
+	flagPkg.DocumentExcludeGlobs = []string{"private/**"}
+	defer func() { flagPkg.DocumentExcludeGlobs = nil }()
+	srv := serveContents(t, map[string][]byte{"private/manual.pdf": buildFixturePDF([]string{"secret"})})
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{"owner": "o", "repo": "r", "filePath": "private/manual.pdf"})
+	_, err := GetDocumentTextFn(context.Background(), req)
+	if err == nil {
+		t.Fatal("excluded path must return an error")
+	}
+	if !strings.Contains(err.Error(), "excluded from document tools") {
+		t.Fatalf("error must mention exclusion, got: %v", err)
 	}
 }
