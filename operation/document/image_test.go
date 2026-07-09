@@ -6,10 +6,12 @@ import (
 	"strings"
 	"testing"
 
+	"codeberg.org/goern/forgejo-mcp/v2/pkg/extract"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestGetDocumentPageImage_PDF(t *testing.T) {
+	requireBinary(t, extract.New().PdftoppmPath, "pdftoppm")
 	pdf := buildFixturePDF([]string{"kilo page", "lima page"})
 	srv := serveContents(t, map[string][]byte{"docs/m.pdf": pdf})
 	defer srv.Close()

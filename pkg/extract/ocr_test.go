@@ -13,9 +13,7 @@ import (
 func rasterizedFixture(t *testing.T, text string) []byte {
 	t.Helper()
 	e := New()
-	if e.PdftoppmPath == "" {
-		t.Fatal("pdftoppm not found — run via make test-docker")
-	}
+	requireBinary(t, e.PdftoppmPath, "pdftoppm")
 	pdf := buildFixturePDF([]string{text})
 	png, err := e.RenderPDFPagePNG(context.Background(), pdf, 1, 0)
 	if err != nil {
@@ -26,9 +24,7 @@ func rasterizedFixture(t *testing.T, text string) []byte {
 
 func TestExtractImageText_OCR(t *testing.T) {
 	e := New()
-	if e.TesseractPath == "" {
-		t.Fatal("tesseract not found — run via make test-docker")
-	}
+	requireBinary(t, e.TesseractPath, "tesseract")
 	png := rasterizedFixture(t, "CHARLIE TOKEN 12345")
 	pages, err := e.ExtractImageText(context.Background(), png)
 	if err != nil {
