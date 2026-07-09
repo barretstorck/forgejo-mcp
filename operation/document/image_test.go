@@ -43,14 +43,14 @@ func TestGetDocumentPageImage_PDF(t *testing.T) {
 	}
 }
 
-// TestGetDocumentPageImage_RejectsOversizeEdge adapts the brief's listing:
-// this package follows the established to.ErrorResult(err) convention (see
-// text_test.go's TestGetDocumentText_UnsupportedExtension), which returns
-// (nil, err) rather than a CallToolResult with IsError=true. So the error
-// surfaces through the function's error return, not res.IsError. It also
-// relies on serveContents(t, map[string][]byte{}) never matching any path,
-// so a fetch (if attempted) would 404 — proving the max_edge_px cap check
-// must run before any fetch.
+// TestGetDocumentPageImage_RejectsOversizeEdge: this package follows the
+// established to.ErrorResult(err) convention (see text_test.go's
+// TestGetDocumentText_UnsupportedExtension), which returns (nil, err)
+// rather than a CallToolResult with IsError=true. So the error surfaces
+// through the function's error return, not res.IsError. It also relies on
+// serveContents(t, map[string][]byte{}) never matching any path, so a
+// fetch (if attempted) would 404 — proving the max_edge_px cap check must
+// run before any fetch.
 func TestGetDocumentPageImage_RejectsOversizeEdge(t *testing.T) {
 	srv := serveContents(t, map[string][]byte{})
 	defer srv.Close()

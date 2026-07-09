@@ -30,7 +30,7 @@ func readZipEntry(data []byte, name string) ([]byte, error) {
 
 // collectText streams an XML document and gathers character data inside
 // elements with the given local name ("t" for both DOCX runs and XLSX
-// shared strings). breakOn ("p" for DOCX paragraphs, "si" for XLSX
+// shared strings). breakLocal ("p" for DOCX paragraphs, "si" for XLSX
 // strings) inserts newlines between logical units.
 func collectText(doc []byte, textLocal, breakLocal string) (string, error) {
 	dec := xml.NewDecoder(bytes.NewReader(doc))
