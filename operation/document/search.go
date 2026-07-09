@@ -19,11 +19,14 @@ const (
 	MaxSearchHits = 10
 	// SnippetRadius is the number of context chars kept on each side of a match.
 	SnippetRadius = 150
+	// MaxDocsPerSearch caps how many candidate documents a single repo-wide
+	// search_documents call will examine before stopping the scan.
+	MaxDocsPerSearch = 200
 )
 
 var SearchDocumentsTool = mcp.NewTool(
 	SearchDocumentsToolName,
-	mcp.WithDescription("Search text inside documents (PDF/images/DOCX/XLSX — scans are OCR'd) across a whole repository, or within one document when `filePath` is given. Case-insensitive substring match. Returns up to 10 hits as {path, page, snippet}. Use when you don't know which document holds the answer."),
+	mcp.WithDescription("Search text inside documents (PDF/images/DOCX/XLSX — scans are OCR'd) across a whole repository, or within one document when `filePath` is given. Case-insensitive substring match. Returns up to 10 hits as {path, page, snippet}. Repo-wide search examines at most 200 candidate documents per call (see limit_reached in the response). Use when you don't know which document holds the answer."),
 	mcp.WithString("owner", mcp.Required(), mcp.Description(params.Owner)),
 	mcp.WithString("repo", mcp.Required(), mcp.Description(params.Repo)),
 	mcp.WithString("ref", mcp.Description(params.Ref)),
@@ -42,6 +45,24 @@ type searchDocsResponse struct {
 	DocumentsSearched int         `json:"documents_searched"`
 	DocumentsSkipped  int         `json:"documents_skipped"`
 	Truncated         bool        `json:"truncated"`
+	// LimitReached is true when the repo-wide scan stopped early because it
+	// hit MaxDocsPerSearch, before examining every candidate document.
+	LimitReached bool `json:"limit_reached"`
+}
+
+// resolveRef mirrors operation/repo/file.go's resolveRef: when ref is empty,
+// look up the repository's default branch. Duplicated locally (rather than
+// exported from the repo package) to keep the document package's dependency
+// surface independent of operation/repo.
+func resolveRef(owner, repo, ref string) (string, error) {
+	if ref == "" {
+		repoInfo, _, err := forgejo.Client().GetRepo(owner, repo)
+		if err != nil {
+			return "", fmt.Errorf("get repo err: %v", err)
+		}
+		ref = repoInfo.DefaultBranch
+	}
+	return ref, nil
 }
 
 func SearchDocumentsFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -64,10 +85,15 @@ func SearchDocumentsFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 	// Collect candidate documents.
 	type candidate struct{ path string }
 	var candidates []candidate
-	if onlyPath != "" {
+	singleFile := onlyPath != ""
+	if singleFile {
 		candidates = []candidate{{onlyPath}}
 	} else {
-		tree, _, err := forgejo.Client().GetTrees(owner, repo, ref, forgejo_sdk.GetTreesOptions{Recursive: true})
+		treeRef, err := resolveRef(owner, repo, ref)
+		if err != nil {
+			return to.ErrorResult(err)
+		}
+		tree, _, err := forgejo.Client().GetTrees(owner, repo, treeRef, forgejo_sdk.GetTreesOptions{Recursive: true})
 		if err != nil {
 			return to.ErrorResult(fmt.Errorf("list repository files err: %v", err))
 		}
@@ -80,18 +106,29 @@ func SearchDocumentsFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 
 	queryLower := strings.ToLower(query)
 	resp := searchDocsResponse{Hits: []searchHit{}}
-	for _, c := range candidates {
+	for i, c := range candidates {
+		if !singleFile && i >= MaxDocsPerSearch {
+			resp.DocumentsSkipped += len(candidates) - i
+			resp.LimitReached = true
+			break
+		}
 		if excluded(c.path) || docKind(c.path) == "" {
 			resp.DocumentsSkipped++
 			continue
 		}
 		data, sha, err := fetchFile(owner, repo, ref, c.path)
 		if err != nil {
+			if singleFile {
+				return to.ErrorResult(err)
+			}
 			resp.DocumentsSkipped++
 			continue
 		}
 		pages, err := extractCached(ctx, data, sha, docKind(c.path))
 		if err != nil {
+			if singleFile {
+				return to.ErrorResult(err)
+			}
 			resp.DocumentsSkipped++
 			continue
 		}

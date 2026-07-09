@@ -17,6 +17,9 @@ type Cache struct {
 }
 
 func New(capacity int) *Cache {
+	if capacity < 1 {
+		capacity = 1
+	}
 	return &Cache{capacity: capacity, entries: make(map[string][]extract.PageText)}
 }
 

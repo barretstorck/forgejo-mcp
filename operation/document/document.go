@@ -41,8 +41,12 @@ func RegisterTool(s *server.MCPServer) {
 
 // excluded reports whether a repo path matches DOCUMENT_EXCLUDE_GLOBS.
 // Supported: path.Match patterns against the full path, and "dir/**"
-// prefix patterns.
+// prefix patterns. p is normalized (path.Clean, leading "./" and ".."
+// segments resolved) before matching so glob-boundary tricks like
+// "public/../private/x.pdf" or "./private/x.pdf" can't bypass an exclusion
+// that the server would otherwise serve under its cleaned path.
 func excluded(p string) bool {
+	p = strings.TrimPrefix(path.Clean("/"+p), "/")
 	for _, g := range flagPkg.DocumentExcludeGlobs {
 		if strings.HasSuffix(g, "/**") {
 			if strings.HasPrefix(p, strings.TrimSuffix(g, "**")) {

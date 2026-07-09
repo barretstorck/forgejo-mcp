@@ -97,6 +97,15 @@ func GetDocumentTextFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 		}
 		chunk := fmt.Sprintf("[page %d]\n%s\n", p.Page, p.Text)
 		if b.Len()+len(chunk) > MaxTextResponseBytes {
+			// If nothing has been included yet, a single oversized page
+			// (e.g. DOCX/XLSX, which are always exactly one page, or a
+			// dense PDF page) would otherwise produce an empty response.
+			// Include a rune-safe truncated prefix of that first chunk so
+			// the caller gets something instead of nothing.
+			if b.Len() == 0 {
+				b.WriteString(truncateRuneSafe(chunk, MaxTextResponseBytes))
+				resp.PagesIncluded = append(resp.PagesIncluded, p.Page)
+			}
 			resp.Truncated = true
 			break
 		}
@@ -105,6 +114,19 @@ func GetDocumentTextFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 	}
 	resp.Text = b.String()
 	return to.TextResult(resp)
+}
+
+// truncateRuneSafe cuts s to at most maxBytes bytes without splitting a
+// multi-byte UTF-8 rune.
+func truncateRuneSafe(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	end := maxBytes
+	for end > 0 && (s[end]&0xC0) == 0x80 {
+		end--
+	}
+	return s[:end]
 }
 
 func getString(req mcp.CallToolRequest, key string) string {

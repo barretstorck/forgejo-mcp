@@ -20,6 +20,14 @@ func TestCache_PutGet(t *testing.T) {
 	}
 }
 
+func TestNew_ClampsNonPositiveCapacity(t *testing.T) {
+	c := New(0)
+	c.Put("a|v1", []extract.PageText{{Page: 1, Text: "x"}}) // must not panic on Put with capacity < 1
+	if _, ok := c.Get("a|v1"); !ok {
+		t.Fatal("expected entry present after Put with clamped capacity")
+	}
+}
+
 func TestCache_EvictsOldest(t *testing.T) {
 	c := New(2)
 	for i := 0; i < 3; i++ {

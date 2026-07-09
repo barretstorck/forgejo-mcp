@@ -1,6 +1,7 @@
 package document
 
 import (
+	"archive/zip"
 	"bytes"
 	"fmt"
 )
@@ -45,4 +46,31 @@ func buildFixturePDF(pages []string) []byte {
 	}
 	fmt.Fprintf(&out, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objs)+1, xref)
 	return out.Bytes()
+}
+
+// buildFixtureDOCX produces a minimal valid DOCX (a zip containing
+// word/document.xml) with one paragraph per entry in paragraphs. Mirrors
+// pkg/extract/ooxml_test.go's zipFixture helper, which is unexported and
+// lives in a different package.
+func buildFixtureDOCX(paragraphs []string) []byte {
+	var body bytes.Buffer
+	body.WriteString(`<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>`)
+	for _, p := range paragraphs {
+		fmt.Fprintf(&body, `<w:p><w:r><w:t xml:space="preserve">%s</w:t></w:r></w:p>`, p)
+	}
+	body.WriteString(`</w:body></w:document>`)
+
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	f, err := w.Create("word/document.xml")
+	if err != nil {
+		panic(err)
+	}
+	if _, err := f.Write(body.Bytes()); err != nil {
+		panic(err)
+	}
+	if err := w.Close(); err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
 }

@@ -97,8 +97,8 @@ func TestGetDocumentText_PDFPageRange(t *testing.T) {
 	}
 }
 
-// TestGetDocumentText_UnsupportedExtension adapts the brief's listing: this
-// package follows the established to.ErrorResult(err) convention (see e.g.
+// TestGetDocumentText_UnsupportedExtension: this package follows the
+// established to.ErrorResult(err) convention (see e.g.
 // operation/repo/file.go), which returns (nil, err) rather than a
 // CallToolResult with IsError=true. So the error surfaces through the
 // function's error return, not res.IsError.
@@ -131,5 +131,41 @@ func TestGetDocumentText_ExcludedPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "excluded from document tools") {
 		t.Fatalf("error must mention exclusion, got: %v", err)
+	}
+}
+
+// TestGetDocumentText_DOCXOversizedPage covers a single page (DOCX/XLSX are
+// always exactly one page) whose text alone exceeds MaxTextResponseBytes.
+// Before the fix, the size-cap loop dropped the oversized chunk entirely,
+// leaving text empty; it must instead return a non-empty, rune-safe
+// truncated prefix of that page.
+func TestGetDocumentText_DOCXOversizedPage(t *testing.T) {
+	big := strings.Repeat("lorem ipsum dolor sit amet consectetur adipiscing elit ", 200) // ~11 KB, over the 8 KB cap
+	docx := buildFixtureDOCX([]string{big})
+	srv := serveContents(t, map[string][]byte{"docs/big.docx": docx})
+	defer srv.Close()
+
+	req := newCallToolRequest(map[string]interface{}{"owner": "o", "repo": "r", "filePath": "docs/big.docx"})
+	res, err := GetDocumentTextFn(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Text          string `json:"text"`
+		PagesIncluded []int  `json:"pages_included"`
+		Truncated     bool   `json:"truncated"`
+	}
+	documentTextResult(t, res, &out)
+	if out.Text == "" {
+		t.Fatal("text must not be empty for an oversized single page")
+	}
+	if len(out.Text) > MaxTextResponseBytes {
+		t.Fatalf("text = %d bytes, want <= %d", len(out.Text), MaxTextResponseBytes)
+	}
+	if !out.Truncated {
+		t.Fatal("want truncated = true")
+	}
+	if len(out.PagesIncluded) != 1 || out.PagesIncluded[0] != 1 {
+		t.Fatalf("pages_included = %v, want [1]", out.PagesIncluded)
 	}
 }
