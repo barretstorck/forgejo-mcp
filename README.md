@@ -165,8 +165,12 @@ List all my repositories
 | `delete_file` | Delete a file |
 | `list_directory` | List contents of a directory (names, types, paths, sizes) |
 | `get_directory_content` | List directory contents with full metadata (SHA, download URL, HTML URL) |
-| `get_repository_tree` | Get the full file tree of a repository, optionally recursive |
-| `search_repository_contents` | Search for files by name within a repository (case-insensitive) |
+| `get_repository_tree` | List repository files as a compact tree, filtered by `path`/`depth`; capped at 200 entries with a `truncated` flag |
+| `search_repository_contents` | Search for files by name within a repository (case-insensitive); capped at 100 matches with `total`/`returned`/`truncated` |
+| **Documents** | |
+| `get_document_text` | Extract text from a document (PDF, PNG/JPG/WebP, DOCX, XLSX) with OCR fallback for scans; response capped at 8 KB with `pages` range support |
+| `search_documents` | Search text inside documents repo-wide (examines at most 200 candidate documents per call, flagging `limit_reached` if the cap stops the scan), or within one document via `filePath`; returns up to 10 hits as `{path, page, snippet}` |
+| `get_document_page_image` | Render one page of a PDF (or an image file) as a PNG for visual inspection |
 | **Commits** | |
 | `list_repo_commits` | List commits in a repository |
 | **Issues** | |
@@ -275,6 +279,8 @@ You can configure the server using command-line arguments or environment variabl
 | `--cli` | - | Enter CLI mode for direct tool invocation |
 | `--user-agent` | `FORGEJO_USER_AGENT` | HTTP User-Agent header (default: `forgejo-mcp/<version>`) |
 | - | `FORGEJO_MCP_MAX_FILE_BYTES` | Maximum decoded byte size accepted by `create_file` / `update_file` (default: `26214400` — 25 MiB). |
+| - | `TOOLS_ENABLED` | Comma-separated allowlist of tool names to expose (e.g. `TOOLS_ENABLED=get_file_content,list_directory`). Unset means all tools are enabled. Filters `tools/list` and rejects `tools/call` for disabled tools. |
+| - | `DOCUMENT_EXCLUDE_GLOBS` | Comma-separated path globs excluded from document tools (`get_document_text`, `search_documents`, `get_document_page_image`), e.g. `DOCUMENT_EXCLUDE_GLOBS=private/**`. Supports `path.Match` patterns plus a `dir/**` prefix form. Exclusion is evaluated against a file's current path string, so a file that historically lived at an excluded path remains reachable under that old path via `ref` (e.g. a past commit or tag) if its current path is not excluded. |
 
 Command-line arguments take priority over environment variables.
 

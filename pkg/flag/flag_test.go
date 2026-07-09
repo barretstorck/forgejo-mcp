@@ -34,3 +34,33 @@ func TestDefaultMaxFileBytes_Is25MiB(t *testing.T) {
 		t.Errorf("DefaultMaxFileBytes = %d, want %d", DefaultMaxFileBytes, want)
 	}
 }
+
+func TestParseToolsEnabled(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{" , ,", nil},
+		{"get_file_content", []string{"get_file_content"}},
+		{" get_file_content , list_directory ", []string{"get_file_content", "list_directory"}},
+	}
+	for _, c := range cases {
+		got := ParseToolsEnabled(c.in)
+		if len(got) != len(c.want) {
+			t.Fatalf("ParseToolsEnabled(%q) = %v, want %v", c.in, got, c.want)
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Fatalf("ParseToolsEnabled(%q)[%d] = %q, want %q", c.in, i, got[i], c.want[i])
+			}
+		}
+	}
+}
+
+func TestParseExcludeGlobs(t *testing.T) {
+	got := ParseExcludeGlobs(" Secret/** , *.bak ,")
+	if len(got) != 2 || got[0] != "Secret/**" || got[1] != "*.bak" {
+		t.Fatalf("ParseExcludeGlobs = %v", got)
+	}
+}

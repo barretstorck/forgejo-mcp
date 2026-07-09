@@ -1,0 +1,12 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f test/Dockerfile.test -t forgejo-mcp-test test
+      - run: docker run --rm -v "$PWD":/src -w /src forgejo-mcp-test go test ./...
