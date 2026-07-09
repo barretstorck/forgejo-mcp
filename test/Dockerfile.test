@@ -4,4 +4,5 @@ RUN apk --no-cache add make git poppler-utils tesseract-ocr tesseract-ocr-data-e
 	&& fc-cache -f
 
 ENV GOFLAGS=-buildvcs=false
+ENV REQUIRE_DOC_TOOLS=1
 WORKDIR /src

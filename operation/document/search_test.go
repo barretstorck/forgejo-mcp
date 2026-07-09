@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"codeberg.org/goern/forgejo-mcp/v2/pkg/extract"
 	flagPkg "codeberg.org/goern/forgejo-mcp/v2/pkg/flag"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/forgejo"
 	forgejo_sdk "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3"
@@ -76,6 +77,7 @@ func searchDocsResult(t *testing.T, res *mcp.CallToolResult, out interface{}) {
 }
 
 func TestSearchDocuments_RepoWide(t *testing.T) {
+	requireBinary(t, extract.New().PdftotextPath, "pdftotext")
 	files := map[string][]byte{
 		"docs/a.pdf":  buildFixturePDF([]string{"the india token lives here"}),
 		"docs/b.pdf":  buildFixturePDF([]string{"nothing relevant"}),
@@ -112,6 +114,7 @@ func TestSearchDocuments_RepoWide(t *testing.T) {
 }
 
 func TestSearchDocuments_ExcludeGlobs(t *testing.T) {
+	requireBinary(t, extract.New().PdftotextPath, "pdftotext")
 	flagPkg.DocumentExcludeGlobs = []string{"private/**"}
 	defer func() { flagPkg.DocumentExcludeGlobs = nil }()
 	files := map[string][]byte{
@@ -159,6 +162,7 @@ func TestExcluded(t *testing.T) {
 // SearchDocumentsFn must resolve the default branch first (mirroring
 // operation/repo/file.go's resolveRef) before calling GetTrees.
 func TestSearchDocuments_RepoWide_NoRef(t *testing.T) {
+	requireBinary(t, extract.New().PdftotextPath, "pdftotext")
 	// Uses a path not reused by any other test in this file: the mock
 	// server's fake blob SHA is derived from the path alone ("sha-"+path),
 	// and extractCached's package-level cache is keyed by that SHA, so

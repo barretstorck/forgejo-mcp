@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"codeberg.org/goern/forgejo-mcp/v2/pkg/extract"
 	flagPkg "codeberg.org/goern/forgejo-mcp/v2/pkg/flag"
 	"codeberg.org/goern/forgejo-mcp/v2/pkg/forgejo"
 	forgejo_sdk "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3"
@@ -70,6 +71,7 @@ func documentTextResult(t *testing.T, res *mcp.CallToolResult, out interface{}) 
 }
 
 func TestGetDocumentText_PDFPageRange(t *testing.T) {
+	requireBinary(t, extract.New().PdftotextPath, "pdftotext")
 	pdf := buildFixturePDF([]string{"alpha page one", "bravo page two", "charlie page three"})
 	srv := serveContents(t, map[string][]byte{"docs/manual.pdf": pdf})
 	defer srv.Close()
