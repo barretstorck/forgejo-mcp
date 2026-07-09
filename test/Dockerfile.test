@@ -1,6 +1,7 @@
 FROM golang:1.26-alpine
 
-RUN apk --no-cache add make git poppler-utils tesseract-ocr tesseract-ocr-data-eng
+RUN apk --no-cache add make git poppler-utils tesseract-ocr tesseract-ocr-data-eng fontconfig font-liberation \
+	&& fc-cache -f
 
 ENV GOFLAGS=-buildvcs=false
 WORKDIR /src
