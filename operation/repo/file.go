@@ -28,6 +28,13 @@ const (
 	SearchRepositoryContentsToolName = "search_repository_contents"
 )
 
+const (
+	// MaxTreeEntries caps get_repository_tree responses (issue #4).
+	MaxTreeEntries = 200
+	// MaxSearchMatches caps search_repository_contents responses.
+	MaxSearchMatches = 100
+)
+
 var (
 	GetFileContentTool = mcp.NewTool(
 		GetFileToolName,
@@ -96,11 +103,12 @@ var (
 
 	GetRepositoryTreeTool = mcp.NewTool(
 		GetRepositoryTreeToolName,
-		mcp.WithDescription("Get the full file tree of a repository. Returns all files and directories, optionally recursive. Useful for understanding repository structure."),
+		mcp.WithDescription("List repository files as a compact tree. Filters: `path` (subtree prefix), `depth` (levels below path; 0 = unlimited). Returns at most 200 entries with `truncated` flag and `total_matching` count — narrow with path/depth when truncated. Prefer list_directory for browsing a single directory."),
 		mcp.WithString("owner", mcp.Required(), mcp.Description(params.Owner)),
 		mcp.WithString("repo", mcp.Required(), mcp.Description(params.Repo)),
 		mcp.WithString("ref", mcp.Description(params.Ref)),
-		mcp.WithBoolean("recursive", mcp.Description("Recurse into subdirectories. Default: true.")),
+		mcp.WithString("path", mcp.Description("Restrict to this subtree (directory path prefix). Empty = repo root.")),
+		mcp.WithNumber("depth", mcp.Description("Max directory levels below `path` to include. 0 or omitted = unlimited.")),
 	)
 
 	SearchRepositoryContentsTool = mcp.NewTool(
@@ -359,6 +367,20 @@ func resolveRef(owner, repo, ref string) (string, error) {
 	return ref, nil
 }
 
+type treeEntry struct {
+	Path string `json:"path"`
+	Type string `json:"type"`
+	Size int64  `json:"size"`
+}
+
+type treeResponse struct {
+	Ref           string      `json:"ref"`
+	Entries       []treeEntry `json:"entries"`
+	TotalMatching int         `json:"total_matching"`
+	Returned      int         `json:"returned"`
+	Truncated     bool        `json:"truncated"`
+}
+
 func GetRepositoryTreeFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	log.Debugf("Called GetRepositoryTreeFn")
 	owner, ok := req.GetArguments()["owner"].(string)
@@ -370,22 +392,41 @@ func GetRepositoryTreeFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.Cal
 		return to.ErrorResult(fmt.Errorf("repo is required"))
 	}
 	ref, _ := req.GetArguments()["ref"].(string)
-	recursive, ok := req.GetArguments()["recursive"].(bool)
-	if !ok {
-		recursive = true
-	}
+	pathPrefix, _ := req.GetArguments()["path"].(string)
+	depthArg, _ := req.GetArguments()["depth"].(float64)
+	depth := int(depthArg)
 
 	ref, err := resolveRef(owner, repo, ref)
 	if err != nil {
 		return to.ErrorResult(err)
 	}
 
-	opts := forgejo_sdk.GetTreesOptions{Recursive: recursive}
-	tree, _, err := forgejo.Client().GetTrees(owner, repo, ref, opts)
+	tree, _, err := forgejo.Client().GetTrees(owner, repo, ref, forgejo_sdk.GetTreesOptions{Recursive: true})
 	if err != nil {
 		return to.ErrorResult(fmt.Errorf("get repository tree err: %v", err))
 	}
-	return to.TextResult(tree)
+
+	prefix := strings.Trim(pathPrefix, "/")
+	resp := treeResponse{Ref: ref, Entries: []treeEntry{}}
+	for _, e := range tree.Entries {
+		rel := e.Path
+		if prefix != "" {
+			if !strings.HasPrefix(e.Path, prefix+"/") && e.Path != prefix {
+				continue
+			}
+			rel = strings.TrimPrefix(strings.TrimPrefix(e.Path, prefix), "/")
+		}
+		resp.TotalMatching++
+		if depth > 0 && strings.Count(rel, "/") >= depth {
+			continue
+		}
+		if len(resp.Entries) < MaxTreeEntries {
+			resp.Entries = append(resp.Entries, treeEntry{Path: e.Path, Type: e.Type, Size: e.Size})
+		}
+	}
+	resp.Returned = len(resp.Entries)
+	resp.Truncated = resp.Returned < resp.TotalMatching
+	return to.TextResult(resp)
 }
 
 func SearchRepositoryContentsFn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -421,11 +462,22 @@ func SearchRepositoryContentsFn(ctx context.Context, req mcp.CallToolRequest) (*
 		Type string `json:"type"`
 		Size int64  `json:"size"`
 	}
-	var matches []match
+	type searchResponse struct {
+		Matches   []match `json:"matches"`
+		Total     int     `json:"total"`
+		Returned  int     `json:"returned"`
+		Truncated bool    `json:"truncated"`
+	}
+	resp := searchResponse{Matches: []match{}}
 	for _, entry := range tree.Entries {
 		if strings.Contains(strings.ToLower(entry.Path), queryLower) {
-			matches = append(matches, match{Path: entry.Path, Type: entry.Type, Size: entry.Size})
+			resp.Total++
+			if len(resp.Matches) < MaxSearchMatches {
+				resp.Matches = append(resp.Matches, match{Path: entry.Path, Type: entry.Type, Size: entry.Size})
+			}
 		}
 	}
-	return to.TextResult(matches)
+	resp.Returned = len(resp.Matches)
+	resp.Truncated = resp.Returned < resp.Total
+	return to.TextResult(resp)
 }
