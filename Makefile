@@ -22,3 +22,12 @@ IMAGE_TAG ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' |
 .PHONY: container
 container:
 	podman build -t $(IMAGE_NAME):$(IMAGE_TAG) -f Containerfile .
+
+## test-docker: run the full test suite inside the test container
+.PHONY: test-docker
+test-docker:
+	docker build -q -f test/Dockerfile.test -t forgejo-mcp-test test
+	docker run --rm -v "$(CURDIR)":/src -w /src \
+		-v forgejo-mcp-gomod:/go/pkg/mod \
+		-v forgejo-mcp-gobuild:/root/.cache/go-build \
+		forgejo-mcp-test go test ./...

@@ -1,0 +1,6 @@
+FROM golang:1.26-alpine
+
+RUN apk --no-cache add make git poppler-utils tesseract-ocr tesseract-ocr-data-eng
+
+ENV GOFLAGS=-buildvcs=false
+WORKDIR /src
