@@ -204,6 +204,14 @@ func initConfig() {
 		}
 		flagPkg.MaxFileBytes = parsed
 	}
+
+	// Tool allowlist — empty/unset exposes all tools.
+	if envValue := os.Getenv("TOOLS_ENABLED"); envValue != "" {
+		flagPkg.ToolsEnabled = flagPkg.ParseToolsEnabled(envValue)
+		log.Info("TOOLS_ENABLED allowlist configured",
+			log.IntField("count", len(flagPkg.ToolsEnabled)),
+		)
+	}
 }
 
 func validateURL(urlStr string) error {

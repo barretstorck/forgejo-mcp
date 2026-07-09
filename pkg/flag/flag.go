@@ -1,6 +1,9 @@
 package flag
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // DefaultMaxFileBytes is the default cap on decoded file content size for
 // create_file / update_file. 25 MiB matches typical Forgejo MAX_UPLOAD_SIZE.
@@ -19,6 +22,10 @@ var (
 	// MaxFileBytes is the cap on decoded file content size for create_file /
 	// update_file. Set from FORGEJO_MCP_MAX_FILE_BYTES at startup.
 	MaxFileBytes int64 = DefaultMaxFileBytes
+
+	// ToolsEnabled is the tool allowlist from TOOLS_ENABLED. nil or empty
+	// means all tools are exposed (backward compatible).
+	ToolsEnabled []string
 )
 
 // ParseMaxFileBytes parses a FORGEJO_MCP_MAX_FILE_BYTES env-var value.
@@ -33,4 +40,16 @@ func ParseMaxFileBytes(s string) (int64, bool) {
 		return DefaultMaxFileBytes, false
 	}
 	return n, true
+}
+
+// ParseToolsEnabled splits a comma-separated tool allowlist, trimming
+// whitespace and dropping empty items. Empty input returns nil.
+func ParseToolsEnabled(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

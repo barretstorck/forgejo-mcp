@@ -166,9 +166,19 @@ func testConnection() error {
 
 
 func newMCPServer(version string) *server.MCPServer {
-	return server.NewMCPServer(
-		"Forgejo MCP Server",
-		version,
-		server.WithLogging(),
-	)
+	opts := []server.ServerOption{server.WithLogging()}
+	if len(flag.ToolsEnabled) > 0 {
+		allowed := make(map[string]bool, len(flag.ToolsEnabled))
+		for _, name := range flag.ToolsEnabled {
+			allowed[name] = true
+		}
+		log.Info("Tool allowlist active",
+			log.IntField("enabled_count", len(allowed)),
+		)
+		opts = append(opts,
+			server.WithToolFilter(filterAllowedTools(allowed)),
+			server.WithToolHandlerMiddleware(rejectDisallowedTools(allowed)),
+		)
+	}
+	return server.NewMCPServer("Forgejo MCP Server", version, opts...)
 }
