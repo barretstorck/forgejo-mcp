@@ -1,3 +1,10 @@
+## Unreleased
+
+- Added `TOOLS_ENABLED` env var: comma-separated allowlist restricting which MCP tools are exposed (unset = all).
+- `get_repository_tree`: now returns at most 200 compact entries with `path`/`depth` filters and a `truncated` flag (#4). `recursive` parameter removed.
+- `search_repository_contents`: response now wrapped with `total`/`returned`/`truncated`, capped at 100 matches.
+- Added document tools (#3): `get_document_text` (PDF/image/DOCX/XLSX text with OCR fallback), `search_documents` (repo-wide or per-document), `get_document_page_image` (PNG page renders). New env `DOCUMENT_EXCLUDE_GLOBS` excludes paths from document access. Container image now bundles poppler-utils and tesseract-ocr.
+
 ## [2.17.0](https://codeberg.org/goern/forgejo-mcp/compare/v2.16.0...v2.17.0) (2026-03-27)
 
 ### :sparkles: Features

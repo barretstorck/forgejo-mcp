@@ -17,6 +17,6 @@ WORKDIR /app
 
 COPY --from=build /app/forgejo-mcp .
 
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata poppler-utils tesseract-ocr tesseract-ocr-data-eng fontconfig font-liberation && fc-cache -f
 
 ENTRYPOINT ["/app/forgejo-mcp"]
